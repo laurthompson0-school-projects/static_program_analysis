@@ -1,0 +1,11 @@
+SynConstInt(2, 5).
+SynConstInt(4, 8).
+SynConstBool(6, "#t").
+SynRef(7, "x").
+SynRef(9, "x").
+SynRef(10, "y").
+SynPrimAdd(8, 9, 10).
+SynIf(5, 6, 7, 8).
+SynLet(3, "y", 4, 5).
+SynLet(1, "x", 2, 3).
+SynProg(1).

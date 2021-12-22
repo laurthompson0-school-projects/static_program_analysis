@@ -1,0 +1,201 @@
+#lang racket
+
+;Allowed Syntax
+; lambda calculus: (λ (x) E) | (E E) | x
+; define, let, if
+; primitive operators: +, -, *, /, <, >, =, and, or
+; constants: integer, float, boolean, string, variable references
+
+;Qustions
+; 1.a. How to ensure referenced variable 'ref' is assosciated with its assignment in 'let' or 'define'
+; 1.b. How to ensure that variable references from higher up in scope are properly identified e.g. x in (lambda (x) (lambda (y) (+ x y)))
+; 2. How to tell how guard exp evaluates in 'if'? Does this matter at this phase or only in program analysis?
+; 3. For primitive operators how to check that each argument expression is a valid type? e.g. not (+ #t #f)
+; 4.a. Can we assume all primitive operators are binary?
+; 4.b. Can we assume let and lambda are unary? Or account for multiple args?
+
+
+;Function to generate unique id's
+(define id-count 0)
+(define (gen-id)
+  (set! id-count (+ 1 id-count))
+  id-count)
+
+;Read program in as single datum
+(define infile (open-input-file "paperEx.sexpr"))
+(define prog (read infile))
+(close-input-port infile)
+;(define prog (read)); reads from STDIN
+; racket parse-to-database.rkt < myprog.sexpr
+
+;define file to write output to
+(define outfile (open-output-file "nodes.dl" #:exists 'replace))
+
+; Supported Primitive operators
+(define prims-bin (set '+ '- '/ '* '< '> '= 'and 'or))
+(define prims-un (set))
+;(define (prim-bin? op) (hash-has-key? prims-bin op))
+;(define (prim-bin->name op) (hash-ref prims-bin op))
+
+;Generate nodes
+(define (exp->id! exp)
+  (match exp
+    ;lambda: SynLambda(id, arg, bodyid) 
+    [`(lambda (,(? symbol? x)) ,body-exp)
+     (define id (gen-id))
+     (define body-id (exp->id! body-exp))
+     (fprintf outfile "SynLambda(~a, \"~a\", ~a).\n" id (symbol->string x) body-id)
+     id]
+    ;(app E E): SynApp(id, efunc-id, earg-id) DISCUSS PLACEMENT OF THIS
+    [`(app ,efunc ,earg)
+     (define id (gen-id))
+     (define efunc-id (exp->id! efunc))
+     (define earg-id (exp->id! earg))
+     (fprintf outfile "SynApp(~a, ~a, ~a).\n" id efunc-id earg-id)
+     id]
+    ;let: SynLet(id, var, rhs-id, body-id)
+    [`(let ([,(? symbol? x) ,rhs-exp]) ,body-exp)
+     (define id (gen-id))
+     (define rhs-id (exp->id! rhs-exp))
+     (define body-id (exp->id! body-exp))
+     (fprintf outfile "SynLet(~a, \"~a\", ~a, ~a).\n" id (symbol->string x) rhs-id body-id)
+     id]
+    ;if: SynIf(id, guard-id, true-id, false-id)
+    [`(if ,guard-exp ,true-exp ,false-exp)
+     (define id (gen-id))
+     (define guard-id (exp->id! guard-exp))
+     (define true-id (exp->id! true-exp))
+     (define false-id (exp->id! false-exp))
+     (fprintf outfile "SynIf(~a, ~a, ~a, ~a).\n" id guard-id true-id false-id)
+     id]
+    ;define: SynDefine(id, var, rhs-exp)
+    ;[`(define ,(? symbol? x) ,rhs-exp)
+     ;(define id (gen-id))
+     ;(define rhs-id (exp->id! rhs-exp))
+     ;(fprintf outfile "SynDefine(~a, \"~a\", ~a).\n" id (symbol->string x) rhs-id)
+     ;id]
+    
+    ;primitives: +, -, /, *, <, >, =, and, or
+    ;(op arg1 arg2): SynPrimBin(id, op, arg1-id, arg2-id) -> see prims-bin set for supported primitive binary operations
+    [`(,op ,arg1 ,arg2) #:when (set-member? prims-bin op)
+     (define id (gen-id))
+     (define arg1-id (exp->id! arg1))
+     (define arg2-id (exp->id! arg2))
+     (fprintf outfile "SynPrimBin(~a,\"~a\", ~a, ~a).\n" id op arg1-id arg2-id)
+     id]
+    ;(op arg1): SynPrimUn(id, op, arg1-id) -> see prims-un set for supported primitive unary operations
+    [`(,op ,arg1) #:when (set-member? prims-un op)
+     (define id (gen-id))
+     (define arg1-id (exp->id! arg1))
+     (fprintf outfile "SynPrimBin(~a,\"~a\", ~a).\n" id op arg1-id)
+     id]
+    
+    ;constants: int, float, bool, string, variable references
+    ;int: SynConstInt(id, val)
+    [`(const ,(? integer? n))
+     (define id (gen-id)) 
+     (fprintf outfile "SynConstInt(~a, ~a).\n" id n)
+     id]
+    ;int: SynConstFloat(id, val)
+    [`(const ,(? flonum? n))
+     (define id (gen-id)) 
+     (fprintf outfile "SynConstFloat(~a, ~a).\n" id n)
+     id]
+    ;Break into true and false tables
+    ;int: SynConstBool(id, val)
+    [`(const ,(? boolean? n))
+     (define id (gen-id))
+     (fprintf outfile "SynConstBool(~a, \"~a\").\n" id  n)
+     id]
+    ;int: SynConstString(id, val)
+    [`(const ,(? string? n))
+     (define id (gen-id))
+     (fprintf outfile "SynConstString(~a, \"~a\").\n" id (symbol->string n))
+     id]
+    ;ref: SynConstRef(id, val) 
+    [`(ref ,(? symbol? x))
+     (define id (gen-id))
+     (fprintf outfile "SynRef(~a, \"~a\").\n" id (symbol->string x))
+     id]
+    
+    ;else
+    [else
+     (pretty-print exp)
+     (fprintf outfile "SynErr(error).\n")
+     'error]))
+
+
+;Begin program
+(fprintf outfile "SynProg(~a).\n" (exp->id! prog)) ;single fact that is the entry point for the code
+(pretty-print prog)
+(close-output-port outfile) ;close output file once everything is written
+
+
+
+
+;Code replaced by PrimBins
+#|
+    ;add: SynPrimAdd(id, arg1-id, arg2-id)
+    [`(+ ,arg1 ,arg2)
+     (define id (gen-id))
+     (define arg1-id (exp->id! arg1))
+     (define arg2-id (exp->id! arg2))
+     (fprintf outfile "SynPrimAdd(~a, ~a, ~a).\n" id arg1-id arg2-id)
+     id]
+    ;subtract: SynPrimSub(id, arg1-id, arg2-id)
+    [`(- ,arg1 ,arg2)
+     (define id (gen-id))
+     (define arg1-id (exp->id! arg1))
+     (define arg2-id (exp->id! arg2))
+     (fprintf outfile "SynPrimSub(~a, ~a, ~a).\n" id arg1-id arg2-id)
+     id]
+    ;multiply: SynPrimMult(id, arg1-id, arg2-id)
+    [`(* ,arg1 ,arg2)
+     (define id (gen-id))
+     (define arg1-id (exp->id! arg1))
+     (define arg2-id (exp->id! arg2))
+     (fprintf outfile "SynPrimMult(~a, ~a, ~a).\n" id arg1-id arg2-id)
+     id]
+    ;divide: SynPrimDiv(id, arg1-id, arg2-id)
+    [`(/ ,arg1 ,arg2)
+     (define id (gen-id))
+     (define arg1-id (exp->id! arg1))
+     (define arg2-id (exp->id! arg2))
+     (fprintf outfile "SynPrimDiv(~a, ~a, ~a).\n" id arg1-id arg2-id)
+     id]
+    ;equal?: SynPrimEQ(id, arg1-id, arg2-id)
+    [`(= ,arg1 ,arg2)
+     (define id (gen-id))
+     (define arg1-id (exp->id! arg1))
+     (define arg2-id (exp->id! arg2))
+     (fprintf outfile "SynPrimEQ(~a, ~a, ~a).\n" id arg1-id arg2-id)
+     id]
+    ;less-than: SynPrimLT(id, arg1-id, arg2-id)
+    [`(< ,arg1 ,arg2)
+     (define id (gen-id))
+     (define arg1-id (exp->id! arg1))
+     (define arg2-id (exp->id! arg2))
+     (fprintf outfile "SynPrimLT(~a, ~a, ~a).\n" id arg1-id arg2-id)
+     id]
+    ;greater-than: SynPrimGT(id, arg1-id, arg2-id)
+    [`(> ,arg1 ,arg2)
+     (define id (gen-id))
+     (define arg1-id (exp->id! arg1))
+     (define arg2-id (exp->id! arg2))
+     (fprintf outfile "SynPrimGT(~a, ~a, ~a).\n" id arg1-id arg2-id)
+     id]
+    ;and: SynPrimAnd(id, arg1-id, arg2-id)
+    [`(and ,arg1 ,arg2)
+     (define id (gen-id))
+     (define arg1-id (exp->id! arg1))
+     (define arg2-id (exp->id! arg2))
+     (fprintf outfile "SynPrimAnd(~a, ~a, ~a).\n" id arg1-id arg2-id)
+     id]
+    ;or: SynPrimOr(id, arg1-id, arg2-id)
+    [`(or ,arg1 ,arg2)
+     (define id (gen-id))
+     (define arg1-id (exp->id! arg1))
+     (define arg2-id (exp->id! arg2))
+     (fprintf outfile "SynPrimOr(~a, ~a, ~a).\n" id arg1-id arg2-id)
+     id]
+    |#

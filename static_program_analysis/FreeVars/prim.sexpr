@@ -1,0 +1,1 @@
+(+ (- (const 1) (and (const 2) (const 3))) (const 5))

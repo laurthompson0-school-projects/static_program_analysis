@@ -1,0 +1,6 @@
+SynConstBool(2, "#f").
+SynRef(4, "x").
+SynRef(5, "y").
+SynLet(3, "y", 4, 5).
+SynLet(1, "x", 2, 3).
+SynProg(1).

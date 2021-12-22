@@ -1,0 +1,38 @@
+// Get node types for language
+
+.decl SynLambda(id:number, arg:symbol, bodyid:number)
+.decl SynApp(id:number, efunc:number, earg:number)
+.decl SynLet(id:number, var:symbol, rhs_id:number, body_id:number)
+.decl SynIf(id:number, guard_id:number, true_id:number, false_id:number)
+.decl SynDefine(id:number, var:symbol, rhs_id:number)
+.decl SynPrimBin(id:number, op:symbol, arg1_id:number, arg2_id:number)
+.decl SynConstInt(id:number, val:number)
+.decl SynConstFloat(id:number, val:number)
+.decl SynConstBool(id:number, val:symbol)
+.decl SynConstString(id:number, val:symbol)
+.decl SynRef(id:number, val:symbol)
+
+//How to tell program where to start???
+.decl SynProg(start:number) 
+
+// Get Facts
+#include "nodes.dl"
+
+// Find Free Variables
+.decl FreeVars(val:symbol, id:number)
+.output FreeVars(delimiter=",")
+FreeVars(val, id) :- SynRef(id, val).
+FreeVars(val, id) :- SynApp(id, fe, ae), FreeVars(val, fe).
+FreeVars(val, id) :- SynApp(id, fe, ae), FreeVars(val, ae).
+FreeVars(val, id) :- SynLambda(id, arg, body), FreeVars(val, body), arg!= val.
+
+FreeVars(val, id) :- SynLet(id, var, rhs, body), FreeVars(val, body), var != val.
+
+FreeVars(val, id) :- SynConstInt(id, val).
+FreeVars(val, id) :- SynConstFloat(id, val).
+FreeVars(val, id) :- SynConstBool(id, val).
+FreeVars(val, id) :- SynConstString(id, val).
+
+FreeVars(val, id) :- SynIf(id, guard_id, true_id, false_id), FreeVars(val, true_id).
+
+FreeVars(val, id) :- SynIf(id, guard_id, true_id, false_id), FreeVars(val, false_id).
